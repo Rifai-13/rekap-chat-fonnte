@@ -12,3 +12,4 @@ Route::post('/webhook', [WebhookController::class, 'handle']);
 Route::post('/send-message', [WebhookController::class, 'sendMessage']);
 Route::post('/ai/sync-knowledge', [WebhookController::class, 'crawlWebsite']);
 Route::get('/ai/list-models', [WebhookController::class, 'listModels']);
+Route::post('/webhook/status', [App\Http\Controllers\WebhookController::class, 'handleStatus']);
