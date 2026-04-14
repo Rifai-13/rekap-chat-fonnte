@@ -3,6 +3,7 @@
 use App\Http\Controllers\ProfileController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\DashboardController;
 use Inertia\Inertia;
 use App\Models\Chat;
 
@@ -30,5 +31,9 @@ Route::get('/dashboard', function () {
         'initialChats' => Chat::latest()->get()
     ]);
 })->middleware(['auth', 'verified'])->name('dashboard');
+
+Route::get('/dashboard', [DashboardController::class, 'index'])
+    ->middleware(['auth', 'verified'])
+    ->name('dashboard');
 
 require __DIR__.'/auth.php';
