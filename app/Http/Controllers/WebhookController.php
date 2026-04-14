@@ -27,13 +27,13 @@ class WebhookController extends Controller
             'receiver' => 'Me',
             'message' => $message,
             'is_from_me' => false,
-            'status' => 'read' 
+            'status' => 'read'
         ]);
         broadcast(new NewChatEvent($chatIn));
 
         // 2. Tanya AI
         $aiReply = $this->askGemini($message);
-        
+
         // 3. Kirim ke Fonnte
         $response = Http::withHeaders(['Authorization' => env('FONNTE_TOKEN')])
             ->post('https://api.fonnte.com/send', [
@@ -92,7 +92,7 @@ class WebhookController extends Controller
         // Fonnte kirim 'id' (internal) ATAU 'stateid' (whatsapp)
         $idFonnte = $request->input('id');
         $stateId = $request->input('stateid');
-        
+
         // Fonnte kirim status lewat 'state', kadang lewat 'status'
         $status = $request->input('state') ?? $request->input('status');
 
@@ -105,14 +105,14 @@ class WebhookController extends Controller
         if ($idFonnte) {
             $chat = Chat::where('id_fonnte', $idFonnte)->first();
         }
-        
+
         if (!$chat && $stateId) {
             $chat = Chat::where('stateid', $stateId)->first();
         }
 
         if ($chat) {
             $updateData = ['status' => $status];
-            
+
             // Kalau di webhook ada stateid tapi di DB belum ada, kita simpan
             if ($stateId && empty($chat->stateid)) {
                 $updateData['stateid'] = $stateId;
@@ -140,5 +140,17 @@ class WebhookController extends Controller
             $data = $response->json();
             return $data['candidates'][0]['content']['parts'][0]['text'] ?? "Maaf, belum tahu.";
         }, 1000);
+    }
+
+    public function deleteKnowledge($id)
+    {
+        try {
+            $knowledge = AiKnowledge::findOrFail($id);
+            $knowledge->delete();
+
+            return response()->json(['message' => 'Data berhasil dihapus']);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Gagal menghapus data'], 500);
+        }
     }
 }
