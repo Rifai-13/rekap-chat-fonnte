@@ -10,3 +10,5 @@ Route::get('/user', function (Request $request) {
 
 Route::post('/webhook', [WebhookController::class, 'handle']);
 Route::post('/send-message', [WebhookController::class, 'sendMessage']);
+Route::post('/ai/sync-knowledge', [WebhookController::class, 'crawlWebsite']);
+Route::get('/ai/list-models', [WebhookController::class, 'listModels']);
