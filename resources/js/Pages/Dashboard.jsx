@@ -2,7 +2,7 @@ import { Head, router } from "@inertiajs/react";
 import { useEffect, useState, useRef } from "react";
 import axios from "axios";
 
-export default function Dashboard({ auth, initialChats, initialKnowledge }) {
+export default function Dashboard({ auth, initialChats, initialKnowledge, initialReplyMode }) {
     // --- STATE MANAGEMENT ---
     const [chats, setChats] = useState(initialChats);
     const [activeTab, setActiveTab] = useState("chat"); 
@@ -24,6 +24,18 @@ export default function Dashboard({ auth, initialChats, initialKnowledge }) {
     const filteredContacts = allContacts.filter((num) =>
         num.toLowerCase().includes(searchQuery.toLowerCase()),
     );
+
+    const [replyMode, setReplyMode] = useState(initialReplyMode || "manual");
+
+    const toggleMode = async (newMode) => {
+        try {
+            await axios.post("/api/ai/update-mode", { mode: newMode });
+            setReplyMode(newMode);
+            alert(`Mode diubah ke: ${newMode.toUpperCase()}`);
+        } catch (err) {
+            alert("Gagal merubah mode.");
+        }
+    };
 
     // --- REAL-TIME LISTENER ---
     useEffect(() => {
@@ -136,6 +148,33 @@ export default function Dashboard({ auth, initialChats, initialKnowledge }) {
 
             {/* --- MAIN AREA --- */}
             <div className="flex-1 flex flex-col bg-[#0b141a] relative border-l border-gray-700/30">
+            {/* --- HEADER DENGAN SELECT MODE --- */}
+                <div className="h-[60px] flex items-center justify-between px-6 bg-[#202c33] border-b border-gray-800/50">
+                    <div className="flex items-center">
+                        {/* <h3 className="font-bold text-sm tracking-wide">
+                            {selectedContact ? selectedContact : "Pilih Chat"}
+                        </h3> */}
+                    </div>
+
+                    {/* SAKLAR MODE BALASAN */}
+                    <div className="flex items-center gap-3">
+                        <span className="text-[9px] font-black tracking-widest text-gray-500 uppercase">System Mode:</span>
+                        <div className="flex bg-[#111b21] p-1 rounded-lg border border-gray-700">
+                            <button 
+                                onClick={() => toggleMode("manual")}
+                                className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all duration-300 ${replyMode === "manual" ? "bg-indigo-600 text-white shadow-lg" : "text-gray-500 hover:text-gray-300"}`}
+                            >
+                                MANUAL
+                            </button>
+                            <button 
+                                onClick={() => toggleMode("ai")}
+                                className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all duration-300 ${replyMode === "ai" ? "bg-emerald-600 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]" : "text-gray-500 hover:text-gray-300"}`}
+                            >
+                                AI AUTO
+                            </button>
+                        </div>
+                    </div>
+                </div>
                 {activeTab === "chat" ? (
                     selectedContact ? (
                         <>

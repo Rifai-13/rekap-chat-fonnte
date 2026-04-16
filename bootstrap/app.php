@@ -21,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
         'api/webhook',
         'api/webhook/status',
         'api/ai/knowledge/*',
+        'api/ai/*',
     ]);
 
         //

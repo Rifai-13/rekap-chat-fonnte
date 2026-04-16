@@ -6,6 +6,7 @@ use App\Models\Chat;
 use App\Models\AiKnowledge;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Auth;
+use App\Models\Setting;
 
 class DashboardController extends Controller
 {
@@ -14,7 +15,8 @@ class DashboardController extends Controller
         // Ambil chat terbaru dan daftar pengetahuan AI
         return Inertia::render('Dashboard', [
             'initialChats' => Chat::latest()->get(),
-            'initialKnowledge' => AiKnowledge::latest()->get(), // Ini data untuk tabel AI kamu
+            'initialKnowledge' => AiKnowledge::latest()->get(),
+            'initialReplyMode' => Setting::where('key', 'reply_mode')->first()->value ?? 'manual',
         ]);
     }
 }
