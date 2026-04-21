@@ -17,3 +17,4 @@ Route::delete('/ai/knowledge/{id}', [App\Http\Controllers\WebhookController::cla
 Route::post('/ai/update-mode', [App\Http\Controllers\WebhookController::class, 'updateMode']);
 Route::post('/chat/mark-as-read', [App\Http\Controllers\WebhookController::class, 'markAsRead']);
 Route::post('/ai/knowledge/{id}/sync', [App\Http\Controllers\WebhookController::class, 'resyncKnowledge']);
+Route::post('/ai/knowledge/sync-all', [App\Http\Controllers\WebhookController::class, 'resyncAllKnowledge']);

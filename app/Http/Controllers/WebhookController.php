@@ -249,4 +249,39 @@ class WebhookController extends Controller
         broadcast(new NewChatEvent($chat));
         return response()->json($chat);
     }
+
+    /**
+     * 10. UPDATE / RESYNC SEMUA KNOWLEDGE SEKALIGUS
+     */
+    public function resyncAllKnowledge()
+    {
+        try {
+            $knowledges = AiKnowledge::all();
+            $berhasil = 0;
+
+            foreach ($knowledges as $knowledge) {
+                try {
+                    $res = Http::withoutVerifying()->timeout(30)->get($knowledge->source_url);
+                    
+                    if ($res->successful()) {
+                        $html = $res->body();
+                        $html = preg_replace('#<script(.*?)>(.*?)</script>#is', '', $html);
+                        $html = preg_replace('#<style(.*?)>(.*?)</style>#is', '', $html);
+                        $cleanText = preg_replace('/\s+/', ' ', strip_tags($html));
+
+                        $knowledge->update(['content' => trim($cleanText)]);
+                        $berhasil++;
+                    }
+                } catch (\Exception $e) {
+                    // Kalau 1 gagal, lanjut ke URL berikutnya (jangan berhenti)
+                    Log::error("Gagal resync " . $knowledge->source_url . ": " . $e->getMessage());
+                }
+            }
+
+            return response()->json(['status' => true, 'message' => "Sip! Berhasil update $berhasil data website!"]);
+        } catch (\Exception $e) {
+            Log::error("Gagal resync massal: " . $e->getMessage());
+            return response()->json(['status' => false, 'message' => 'Gagal update semua data'], 500);
+        }
+    }
 }

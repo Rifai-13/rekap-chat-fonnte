@@ -14,11 +14,12 @@ export default function Dashboard({
     const [searchQuery, setSearchQuery] = useState("");
     const [newMessage, setNewMessage] = useState("");
     const [aiUrl, setAiUrl] = useState("");
-    
+
     // State Loading
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncingId, setSyncingId] = useState(null);
-    const [isSending, setIsSending] = useState(false); 
+    const [isSyncingAll, setIsSyncingAll] = useState(false);
+    const [isSending, setIsSending] = useState(false);
     const [replyMode, setReplyMode] = useState(initialReplyMode || "manual");
     const scrollRef = useRef(null);
 
@@ -64,16 +65,16 @@ export default function Dashboard({
         e.preventDefault();
         if (!newMessage.trim() || !selectedContact || isSending) return;
 
-        setIsSending(true); 
-        const msgToSend = newMessage; 
-        setNewMessage(""); 
+        setIsSending(true);
+        const msgToSend = newMessage;
+        setNewMessage("");
 
         try {
             const res = await axios.post("/api/send-message", {
                 receiver: selectedContact,
                 message: msgToSend,
             });
-            
+
             setChats((prev) => {
                 const isExist = prev.find((c) => c.id === res.data.id);
                 if (isExist) return prev;
@@ -83,7 +84,7 @@ export default function Dashboard({
             alert("Gagal kirim pesan");
             setNewMessage(msgToSend);
         } finally {
-            setIsSending(false); 
+            setIsSending(false);
         }
     };
 
@@ -122,11 +123,33 @@ export default function Dashboard({
         try {
             await axios.post(`/api/ai/knowledge/${id}/sync`);
             router.reload({ only: ["initialKnowledge"] });
-            alert("Sip! Data terbaru dari website ini sudah di-update ke otak AI.");
+            alert(
+                "Sip! Data terbaru dari website ini sudah di-update ke otak AI.",
+            );
         } catch (err) {
             alert("Gagal mengupdate data website.");
         } finally {
             setSyncingId(null);
+        }
+    };
+
+    // 4. Update Semua Data Sekaligus
+    const handleResyncAll = async () => {
+        if (
+            !confirm(
+                "Update semua data website sekarang? Proses ini mungkin memakan waktu beberapa detik.",
+            )
+        )
+            return;
+        setIsSyncingAll(true);
+        try {
+            const res = await axios.post("/api/ai/knowledge/sync-all");
+            router.reload({ only: ["initialKnowledge"] });
+            alert(res.data.message);
+        } catch (err) {
+            alert("Gagal mengupdate semua data.");
+        } finally {
+            setIsSyncingAll(false);
         }
     };
 
@@ -266,17 +289,17 @@ export default function Dashboard({
                                 style={{ backgroundBlendMode: "overlay" }}
                             >
                                 {[...filteredMessages].reverse().map((c) => {
-                                    
                                     // --- LOGIKA CENTANG ---
-                                    let ticks = "✓"; 
-                                    let tickColor = "opacity-60 text-gray-400"; 
+                                    let ticks = "✓";
+                                    let tickColor = "opacity-60 text-gray-400";
 
                                     const st = c.status?.toLowerCase();
                                     if (st === "delivered") {
                                         ticks = "✓✓";
                                     } else if (st === "read") {
                                         ticks = "✓✓";
-                                        tickColor = "text-[#53bdeb] opacity-100 font-bold"; 
+                                        tickColor =
+                                            "text-[#53bdeb] opacity-100 font-bold";
                                     }
 
                                     return (
@@ -294,21 +317,28 @@ export default function Dashboard({
                                                     <span className="opacity-60 text-gray-400">
                                                         {new Date(
                                                             c.created_at,
-                                                        ).toLocaleTimeString([], {
-                                                            hour: "2-digit",
-                                                            minute: "2-digit",
-                                                        })}
+                                                        ).toLocaleTimeString(
+                                                            [],
+                                                            {
+                                                                hour: "2-digit",
+                                                                minute: "2-digit",
+                                                            },
+                                                        )}
                                                     </span>
-                                                    
+
                                                     {c.is_from_me ? (
                                                         <span
-                                                            className={tickColor}
-                                                            style={{ letterSpacing: "-1px" }}
+                                                            className={
+                                                                tickColor
+                                                            }
+                                                            style={{
+                                                                letterSpacing:
+                                                                    "-1px",
+                                                            }}
                                                         >
                                                             {ticks}
                                                         </span>
                                                     ) : null}
-                                                    
                                                 </div>
                                             </div>
                                         </div>
@@ -392,39 +422,83 @@ export default function Dashboard({
                             </div>
 
                             {/* TABEL DATA KNOWLEDGE */}
-                            <div className="bg-[#111b21] rounded-2xl overflow-hidden border border-gray-800 shadow-2xl">
-                                <table className="w-full text-left">
-                                    <thead className="bg-[#202c33] text-[10px] font-bold text-gray-500 uppercase tracking-widest border-b border-gray-800">
-                                        <tr>
-                                            <th className="px-6 py-5">Source URL</th>
-                                            <th className="px-6 py-5 text-right">Aksi</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-800/50">
-                                        {initialKnowledge?.map((item) => (
-                                            <tr key={item.id} className="hover:bg-white/5 transition">
-                                                <td className="px-6 py-4 text-sm text-indigo-400 truncate max-w-xl">
-                                                    {item.source_url}
-                                                </td>
-                                                <td className="px-6 py-4 text-right space-x-4">
-                                                    <button 
-                                                        onClick={() => handleResyncKnowledge(item.id)} 
-                                                        disabled={syncingId === item.id}
-                                                        className="text-emerald-500 text-xs font-bold hover:underline tracking-widest disabled:opacity-50"
-                                                    >
-                                                        {syncingId === item.id ? "UPDATING..." : "UPDATE"}
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => handleDeleteKnowledge(item.id)} 
-                                                        className="text-red-500 text-xs font-bold hover:underline tracking-widest"
-                                                    >
-                                                        HAPUS
-                                                    </button>
-                                                </td>
+                            <div className="mt-6">
+                                <div className="flex justify-between items-center mb-4 px-1">
+                                    <h2 className="text-xs font-bold text-gray-500 tracking-widest uppercase">
+                                        Sumber Data Terdaftar
+                                    </h2>
+                                    <button
+                                        onClick={handleResyncAll}
+                                        disabled={
+                                            isSyncingAll ||
+                                            initialKnowledge?.length === 0
+                                        }
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg font-bold text-[10px] uppercase tracking-widest shadow-lg transition-all disabled:opacity-50"
+                                    >
+                                        {isSyncingAll
+                                            ? "UPDATING ALL..."
+                                            : "SYNC ALL DATA"}
+                                    </button>
+                                </div>
+                                <div className="bg-[#111b21] rounded-2xl overflow-hidden border border-gray-800 shadow-2xl">
+                                    <table className="w-full text-left">
+                                        <thead className="bg-[#202c33] text-[10px] font-bold text-gray-500 uppercase tracking-widest border-b border-gray-800">
+                                            <tr>
+                                                <th className="px-6 py-5">
+                                                    Source URL
+                                                </th>
+                                                <th className="px-6 py-5 text-right">
+                                                    Aksi
+                                                </th>
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-800/50">
+                                            {initialKnowledge?.map((item) => (
+                                                <tr
+                                                    key={item.id}
+                                                    className="hover:bg-white/5 transition"
+                                                >
+                                                    <td className="px-6 py-4 text-sm text-indigo-400 truncate max-w-xl">
+                                                        {item.source_url}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right space-x-4">
+                                                        <button
+                                                            onClick={() =>
+                                                                handleResyncKnowledge(
+                                                                    item.id,
+                                                                )
+                                                            }
+                                                            disabled={
+                                                                syncingId ===
+                                                                    item.id ||
+                                                                isSyncingAll
+                                                            }
+                                                            className="text-emerald-500 text-xs font-bold hover:underline tracking-widest disabled:opacity-50"
+                                                        >
+                                                            {syncingId ===
+                                                            item.id
+                                                                ? "UPDATING..."
+                                                                : "UPDATE"}
+                                                        </button>
+                                                        <button
+                                                            onClick={() =>
+                                                                handleDeleteKnowledge(
+                                                                    item.id,
+                                                                )
+                                                            }
+                                                            disabled={
+                                                                isSyncingAll
+                                                            }
+                                                            className="text-red-500 text-xs font-bold hover:underline tracking-widest disabled:opacity-50"
+                                                        >
+                                                            HAPUS
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     </div>
