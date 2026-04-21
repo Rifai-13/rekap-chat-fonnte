@@ -17,9 +17,8 @@ export default function Dashboard({
     
     // State Loading
     const [isSyncing, setIsSyncing] = useState(false);
-    const [syncingId, setSyncingId] = useState(null); // Gembok loading untuk tombol update spesifik
-    const [isSending, setIsSending] = useState(false); // Gembok anti-dobel chat
-    
+    const [syncingId, setSyncingId] = useState(null);
+    const [isSending, setIsSending] = useState(false); 
     const [replyMode, setReplyMode] = useState(initialReplyMode || "manual");
     const scrollRef = useRef(null);
 
@@ -119,7 +118,7 @@ export default function Dashboard({
 
     // 3. Update / Sinkron Ulang Data (FUNGSI BARU)
     const handleResyncKnowledge = async (id) => {
-        setSyncingId(id); // Nyalakan loading di tombol ini
+        setSyncingId(id);
         try {
             await axios.post(`/api/ai/knowledge/${id}/sync`);
             router.reload({ only: ["initialKnowledge"] });
@@ -127,7 +126,7 @@ export default function Dashboard({
         } catch (err) {
             alert("Gagal mengupdate data website.");
         } finally {
-            setSyncingId(null); // Matikan loading
+            setSyncingId(null);
         }
     };
 
