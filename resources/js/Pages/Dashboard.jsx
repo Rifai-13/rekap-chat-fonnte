@@ -14,10 +14,13 @@ export default function Dashboard({
     const [searchQuery, setSearchQuery] = useState("");
     const [newMessage, setNewMessage] = useState("");
     const [aiUrl, setAiUrl] = useState("");
-    const [isSyncing, setIsSyncing] = useState(false);
-    const [replyMode, setReplyMode] = useState(initialReplyMode || "manual");
     
-    const [isSending, setIsSending] = useState(false);
+    // State Loading
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [syncingId, setSyncingId] = useState(null); // Gembok loading untuk tombol update spesifik
+    const [isSending, setIsSending] = useState(false); // Gembok anti-dobel chat
+    
+    const [replyMode, setReplyMode] = useState(initialReplyMode || "manual");
     const scrollRef = useRef(null);
 
     const allContacts = [...new Set(chats.map((c) => c.sender))];
@@ -60,12 +63,11 @@ export default function Dashboard({
 
     const handleSend = async (e) => {
         e.preventDefault();
-
         if (!newMessage.trim() || !selectedContact || isSending) return;
 
-        setIsSending(true);
-        const msgToSend = newMessage;
-        setNewMessage("");
+        setIsSending(true); 
+        const msgToSend = newMessage; 
+        setNewMessage(""); 
 
         try {
             const res = await axios.post("/api/send-message", {
@@ -81,10 +83,14 @@ export default function Dashboard({
         } catch (err) {
             alert("Gagal kirim pesan");
             setNewMessage(msgToSend);
-            setIsSending(false);
+        } finally {
+            setIsSending(false); 
         }
     };
 
+    // --- FITUR KNOWLEDGE CENTER ---
+
+    // 1. Tambah Data Baru
     const handleSyncAI = async (e) => {
         e.preventDefault();
         setIsSyncing(true);
@@ -100,6 +106,7 @@ export default function Dashboard({
         }
     };
 
+    // 2. Hapus Data
     const handleDeleteKnowledge = async (id) => {
         if (!confirm("Hapus sumber data ini?")) return;
         try {
@@ -107,6 +114,20 @@ export default function Dashboard({
             router.reload({ only: ["initialKnowledge"] });
         } catch (err) {
             alert("Gagal hapus");
+        }
+    };
+
+    // 3. Update / Sinkron Ulang Data (FUNGSI BARU)
+    const handleResyncKnowledge = async (id) => {
+        setSyncingId(id); // Nyalakan loading di tombol ini
+        try {
+            await axios.post(`/api/ai/knowledge/${id}/sync`);
+            router.reload({ only: ["initialKnowledge"] });
+            alert("Sip! Data terbaru dari website ini sudah di-update ke otak AI.");
+        } catch (err) {
+            alert("Gagal mengupdate data website.");
+        } finally {
+            setSyncingId(null); // Matikan loading
         }
     };
 
@@ -227,38 +248,6 @@ export default function Dashboard({
                                     {initialKnowledge?.length || 0} Sources
                                 </p>
                             </div>
-                            {initialKnowledge?.map((item) => (
-                                <div
-                                    key={item.id}
-                                    className="p-3 bg-[#111b21] rounded-lg border border-gray-800 flex justify-between items-center group"
-                                >
-                                    <div className="truncate text-[10px] text-indigo-400 font-mono flex-1">
-                                        {item.source_url}
-                                    </div>
-                                    <button
-                                        onClick={() =>
-                                            handleDeleteKnowledge(item.id)
-                                        }
-                                        className="text-red-500 opacity-0 group-hover:opacity-100 transition p-1 hover:bg-red-500/10 rounded"
-                                    >
-                                        <svg
-                                            xmlns="http://www.w3.org/2000/svg"
-                                            width="14"
-                                            height="14"
-                                            fill="none"
-                                            viewBox="0 0 24 24"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                        >
-                                            <path
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                            />
-                                        </svg>
-                                    </button>
-                                </div>
-                            ))}
                         </div>
                     )}
                 </div>
@@ -311,6 +300,7 @@ export default function Dashboard({
                                                             minute: "2-digit",
                                                         })}
                                                     </span>
+                                                    
                                                     {c.is_from_me ? (
                                                         <span
                                                             className={tickColor}
@@ -366,7 +356,7 @@ export default function Dashboard({
                 ) : (
                     /* AI KNOWLEDGE CENTER AREA (FULL) */
                     <div className="flex-1 p-10 overflow-y-auto">
-                        <div className="max-w-4xl mx-auto animate-in fade-in duration-700">
+                        <div className="max-w-5xl mx-auto animate-in fade-in duration-700">
                             <div className="flex justify-between items-end mb-10 border-b border-gray-800 pb-8">
                                 <div>
                                     <h1 className="text-4xl font-black text-white tracking-tighter">
@@ -401,53 +391,41 @@ export default function Dashboard({
                                     </button>
                                 </form>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="bg-[#111b21] p-8 rounded-3xl border border-gray-800 shadow-2xl flex flex-col items-center justify-center space-y-4">
-                                    <div className="w-16 h-16 bg-indigo-600/10 rounded-full flex items-center justify-center text-indigo-500">
-                                        <svg
-                                            xmlns="http://www.w3.org/2000/svg"
-                                            width="32"
-                                            height="32"
-                                            fill="none"
-                                            viewBox="0 0 24 24"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                        >
-                                            <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                                        </svg>
-                                    </div>
-                                    <div className="text-center">
-                                        <p className="text-3xl font-black">
-                                            {initialKnowledge?.length || 0}
-                                        </p>
-                                        <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest">
-                                            Active Sources
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="bg-[#111b21] p-8 rounded-3xl border border-gray-800 shadow-2xl flex flex-col items-center justify-center space-y-4">
-                                    <div className="w-16 h-16 bg-emerald-600/10 rounded-full flex items-center justify-center text-emerald-500">
-                                        <svg
-                                            xmlns="http://www.w3.org/2000/svg"
-                                            width="32"
-                                            height="32"
-                                            fill="none"
-                                            viewBox="0 0 24 24"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                        >
-                                            <path d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                        </svg>
-                                    </div>
-                                    <div className="text-center">
-                                        <p className="text-3xl font-black">
-                                            FAST
-                                        </p>
-                                        <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest">
-                                            Sync Speed
-                                        </p>
-                                    </div>
-                                </div>
+
+                            {/* TABEL DATA KNOWLEDGE */}
+                            <div className="bg-[#111b21] rounded-2xl overflow-hidden border border-gray-800 shadow-2xl">
+                                <table className="w-full text-left">
+                                    <thead className="bg-[#202c33] text-[10px] font-bold text-gray-500 uppercase tracking-widest border-b border-gray-800">
+                                        <tr>
+                                            <th className="px-6 py-5">Source URL</th>
+                                            <th className="px-6 py-5 text-right">Aksi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-800/50">
+                                        {initialKnowledge?.map((item) => (
+                                            <tr key={item.id} className="hover:bg-white/5 transition">
+                                                <td className="px-6 py-4 text-sm text-indigo-400 truncate max-w-xl">
+                                                    {item.source_url}
+                                                </td>
+                                                <td className="px-6 py-4 text-right space-x-4">
+                                                    <button 
+                                                        onClick={() => handleResyncKnowledge(item.id)} 
+                                                        disabled={syncingId === item.id}
+                                                        className="text-emerald-500 text-xs font-bold hover:underline tracking-widest disabled:opacity-50"
+                                                    >
+                                                        {syncingId === item.id ? "UPDATING..." : "UPDATE"}
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => handleDeleteKnowledge(item.id)} 
+                                                        className="text-red-500 text-xs font-bold hover:underline tracking-widest"
+                                                    >
+                                                        HAPUS
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>

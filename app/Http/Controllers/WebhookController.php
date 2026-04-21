@@ -13,6 +13,9 @@ use Illuminate\Support\Facades\Cache;
 
 class WebhookController extends Controller
 {
+    /**
+     * 1. HANDLE PESAN MASUK DARI CUSTOMER
+     */
     public function handle(Request $request)
     {
         $message = $request->input('message');
@@ -20,31 +23,30 @@ class WebhookController extends Controller
 
         if (!$message || !$sender) return response()->json(['status' => false]);
 
-        $lockKey = 'lock_' . $sender . '_' . md5($message);
+        $lockKey = 'webhook_lock_' . $sender . '_' . md5($message);
         if (!Cache::add($lockKey, true, 120)) {
             return response()->json(['status' => true]);
         }
 
         try {
-            // 1. Simpan Pesan Masuk
             $chatIn = Chat::create([
                 'sender'     => $sender,
                 'receiver'   => 'Me',
                 'message'    => $message,
                 'is_from_me' => false,
-                'status'     => 'unread'
+                'status'     => 'unread' 
             ]);
 
             broadcast(new NewChatEvent($chatIn));
 
             $mode = Setting::where('key', 'reply_mode')->value('value') ?? 'manual';
 
-            // 2. Mode AI di Background
+            // MODE AI: Balas Otomatis dengan Gemini AI
             if ($mode === 'ai') {
                 dispatch(function () use ($message, $sender) {
                     try {
                         $aiReply = $this->askGemini($message);
-
+                        
                         $response = Http::withHeaders(['Authorization' => env('FONNTE_TOKEN')])
                             ->withoutVerifying()
                             ->timeout(15)
@@ -55,12 +57,14 @@ class WebhookController extends Controller
 
                         if ($response->successful()) {
                             $resData = $response->json();
+                            $fonnteId = is_array($resData['id']) ? $resData['id'][0] : ($resData['id'] ?? null);
+
                             $chatOut = Chat::create([
-                                'sender'     => $sender,
-                                'receiver'   => 'Me',
+                                'sender'     => $sender, 
+                                'receiver'   => 'Me', 
                                 'message'    => $aiReply,
-                                'is_from_me' => true,
-                                'id_fonnte'  => $resData['id'][0] ?? null,
+                                'is_from_me' => true, 
+                                'id_fonnte'  => $fonnteId, 
                                 'status'     => 'sent'
                             ]);
                             broadcast(new NewChatEvent($chatOut));
@@ -72,55 +76,56 @@ class WebhookController extends Controller
             }
 
             return response()->json(['status' => true]);
+
         } catch (\Exception $e) {
             Log::error("Webhook Fatal: " . $e->getMessage());
             return response()->json(['status' => false]);
         }
     }
 
+    /**
+     * 2. MEMBACA PESAN (MENGIRIM CENTANG BIRU KE CUSTOMER)
+     */
     public function markAsRead(Request $request)
     {
         $sender = $request->sender;
         Chat::where('sender', $sender)->where('is_from_me', false)->update(['status' => 'read']);
-
+        
         dispatch(function () use ($sender) {
             try {
                 Http::withHeaders(['Authorization' => env('FONNTE_TOKEN')])
                     ->withoutVerifying()
                     ->timeout(5)
                     ->post('https://api.fonnte.com/read', ['target' => $sender]);
-            } catch (\Exception $e) {
-            }
+            } catch (\Exception $e) {}
         })->afterResponse();
 
         return response()->json(['status' => true]);
     }
 
+    /**
+     * 3. HANDLE STATUS PESAN (CENTANG 1, CENTANG 2 ABU, CENTANG 2 BIRU)
+     */
     public function handleStatus(Request $request)
     {
-        // Fonnte mengirim ID pesan yang sukses dikirim / dibaca
         $idFonnte = $request->input('id');
-        $stateId  = $request->input('stateid');
         $status   = strtolower($request->input('status') ?? $request->input('state'));
 
-        if (!$status) return response()->json(['status' => false]);
+        if (!$idFonnte || !$status) return response()->json(['status' => false]);
 
-        $chat = Chat::where(function ($q) use ($idFonnte, $stateId) {
-            if ($idFonnte) $q->where('id_fonnte', $idFonnte);
-            if ($stateId) $q->orWhere('stateid', $stateId);
-        })->first();
+        $chat = Chat::where('id_fonnte', $idFonnte)->first();
 
         if ($chat) {
-            $updateData = ['status' => $status];
-            if ($stateId) $updateData['stateid'] = $stateId;
-
-            $chat->update($updateData);
+            $chat->update(['status' => $status]);
             broadcast(new NewChatEvent($chat));
         }
 
         return response()->json(['status' => true]);
     }
 
+    /**
+     * 4. PROSES TANYA KE GEMINI AI
+     */
     private function askGemini($userQuestion)
     {
         $apiKey = env('GEMINI_API_KEY');
@@ -136,12 +141,18 @@ class WebhookController extends Controller
         return $response->json()['candidates'][0]['content']['parts'][0]['text'] ?? "Maaf bro, Rifai lagi sibuk.";
     }
 
+    /**
+     * 5. UBAH MODE (MANUAL / AI AUTO)
+     */
     public function updateMode(Request $request)
     {
         Setting::updateOrCreate(['key' => 'reply_mode'], ['value' => $request->mode]);
         return response()->json(['status' => true]);
     }
 
+    /**
+     * 6. SERAP DATA DARI WEBSITE (CRAWLING)
+     */
     public function crawlWebsite(Request $request) 
     {
         try {
@@ -156,7 +167,6 @@ class WebhookController extends Controller
             $html = preg_replace('#<style(.*?)>(.*?)</style>#is', '', $html);
 
             $cleanText = strip_tags($html);
-            
             $cleanText = preg_replace('/\s+/', ' ', $cleanText);
             
             AiKnowledge::updateOrCreate(
@@ -170,6 +180,9 @@ class WebhookController extends Controller
         }
     }
 
+    /**
+     * 7. HAPUS KNOWLEDGE AI
+     */
     public function deleteKnowledge($id) 
     {
         try {
@@ -181,23 +194,58 @@ class WebhookController extends Controller
         }
     }
 
+    /**
+     * 8. UPDATE / RESYNC KNOWLEDGE AI MANUAL
+     */
+    public function resyncKnowledge($id)
+    {
+        try {
+            $knowledge = AiKnowledge::findOrFail($id);
+
+            $res = Http::withoutVerifying()->timeout(30)->get($knowledge->source_url);
+            
+            if ($res->failed()) {
+                return response()->json(['status' => false, 'message' => 'Gagal akses website'], 500);
+            }
+
+            $html = $res->body();
+            $html = preg_replace('#<script(.*?)>(.*?)</script>#is', '', $html);
+            $html = preg_replace('#<style(.*?)>(.*?)</style>#is', '', $html);
+            $cleanText = preg_replace('/\s+/', ' ', strip_tags($html));
+
+            $knowledge->update(['content' => trim($cleanText)]);
+
+            return response()->json(['status' => true, 'message' => 'Data berhasil diupdate!']);
+        } catch (\Exception $e) {
+            Log::error("Gagal resync knowledge: " . $e->getMessage());
+            return response()->json(['status' => false, 'message' => 'Gagal update'], 500);
+        }
+    }
+
+    /**
+     * 9. KIRIM PESAN MANUAL DARI DASHBOARD
+     */
     public function sendMessage(Request $request)
     {
         $response = Http::withHeaders(['Authorization' => env('FONNTE_TOKEN')])
             ->withoutVerifying()
             ->post('https://api.fonnte.com/send', [
-                'target' => $request->receiver,
+                'target'  => $request->receiver,
                 'message' => $request->message
             ]);
+
+        $resData = $response->json();
+        $fonnteId = is_array($resData['id']) ? $resData['id'][0] : ($resData['id'] ?? null);
 
         $chat = Chat::create([
             'sender'     => $request->receiver,
             'receiver'   => 'Me',
             'message'    => $request->message,
             'is_from_me' => true,
-            'id_fonnte'  => $response->json()['id'][0] ?? null,
+            'id_fonnte'  => $fonnteId,
             'status'     => 'sent'
         ]);
+        
         broadcast(new NewChatEvent($chat));
         return response()->json($chat);
     }
