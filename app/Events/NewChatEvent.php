@@ -5,11 +5,11 @@ namespace App\Events;
 use App\Models\Chat;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow; // Pastikan ini di-import
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class NewChatEvent implements \Illuminate\Contracts\Broadcasting\ShouldBroadcastNow
+class NewChatEvent implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
@@ -20,11 +20,8 @@ class NewChatEvent implements \Illuminate\Contracts\Broadcasting\ShouldBroadcast
         $this->chat = $chat;
     }
 
-    public function broadcastOn(): array
+    public function broadcastOn()
     {
-        // Nama channel tempat React dengerin sinyal
-        return [
-            new \Illuminate\Broadcasting\Channel('chat-channel'),
-        ];
+        return new Channel('chat-channel');
     }
 }

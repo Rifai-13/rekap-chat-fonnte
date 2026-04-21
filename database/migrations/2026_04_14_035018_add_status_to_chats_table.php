@@ -12,10 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('chats', function (Blueprint $table) {
-            //
-            // id_fonnte untuk mencocokkan laporan dari Fonnte ke database kita
             $table->string('id_fonnte')->nullable()->after('id');
-            // status untuk menyimpan sent, delivered, atau read
             $table->string('status')->default('sent')->after('is_from_me');
         });
     }

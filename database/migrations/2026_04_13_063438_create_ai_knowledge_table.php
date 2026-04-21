@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('ai_knowledge', function (Blueprint $table) {
             $table->id();
-            $table->longText('content'); // Untuk simpan teks website
+            $table->longText('content');
             $table->string('source_url')->nullable();
             $table->timestamps();
         });

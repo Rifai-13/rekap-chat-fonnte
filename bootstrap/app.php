@@ -22,6 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
         'api/webhook/status',
         'api/ai/knowledge/*',
         'api/ai/*',
+        'api/chat/mark-as-read',
     ]);
 
         //

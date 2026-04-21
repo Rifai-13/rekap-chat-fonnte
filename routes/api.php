@@ -15,3 +15,4 @@ Route::get('/ai/list-models', [WebhookController::class, 'listModels']);
 Route::post('/webhook/status', [App\Http\Controllers\WebhookController::class, 'handleStatus']);
 Route::delete('/ai/knowledge/{id}', [App\Http\Controllers\WebhookController::class, 'deleteKnowledge']);
 Route::post('/ai/update-mode', [App\Http\Controllers\WebhookController::class, 'updateMode']);
+Route::post('/chat/mark-as-read', [App\Http\Controllers\WebhookController::class, 'markAsRead']);

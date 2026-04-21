@@ -18,7 +18,6 @@ return new class extends Migration
             $table->string('value');
             $table->timestamps();
         });
-        // Insert default settings
         DB::table('settings')->insert([
             'key' => 'reply_mode',
             'value' => 'manual',
