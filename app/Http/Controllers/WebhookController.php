@@ -23,8 +23,9 @@ class WebhookController extends Controller
 
         if (!$message || !$sender) return response()->json(['status' => false]);
 
+        // Kunci 5 detik biar Fonnte gak spam request dobel
         $lockKey = 'webhook_lock_' . $sender . '_' . md5($message);
-        if (!Cache::add($lockKey, true, 120)) {
+        if (!Cache::add($lockKey, true, 5)) {
             return response()->json(['status' => true]);
         }
 
@@ -34,7 +35,7 @@ class WebhookController extends Controller
                 'receiver'   => 'Me',
                 'message'    => $message,
                 'is_from_me' => false,
-                'status'     => 'unread' 
+                'status'     => 'unread'
             ]);
 
             broadcast(new NewChatEvent($chatIn));
@@ -46,10 +47,9 @@ class WebhookController extends Controller
                 dispatch(function () use ($message, $sender) {
                     try {
                         $aiReply = $this->askGemini($message);
-                        
+
                         $response = Http::withHeaders(['Authorization' => env('FONNTE_TOKEN')])
                             ->withoutVerifying()
-                            ->timeout(15)
                             ->post('https://api.fonnte.com/send', [
                                 'target'  => $sender,
                                 'message' => $aiReply,
@@ -59,13 +59,16 @@ class WebhookController extends Controller
                             $resData = $response->json();
                             $fonnteId = is_array($resData['id']) ? $resData['id'][0] : ($resData['id'] ?? null);
 
+                            $earlyStatus = Cache::pull('fonnte_status_' . $fonnteId);
+                            $finalStatus = $earlyStatus ? $earlyStatus : 'sent';
+
                             $chatOut = Chat::create([
-                                'sender'     => $sender, 
-                                'receiver'   => 'Me', 
+                                'sender'     => $sender,
+                                'receiver'   => 'Me',
                                 'message'    => $aiReply,
-                                'is_from_me' => true, 
-                                'id_fonnte'  => $fonnteId, 
-                                'status'     => 'sent'
+                                'is_from_me' => true,
+                                'id_fonnte'  => $fonnteId,
+                                'status'     => $finalStatus
                             ]);
                             broadcast(new NewChatEvent($chatOut));
                         }
@@ -76,7 +79,6 @@ class WebhookController extends Controller
             }
 
             return response()->json(['status' => true]);
-
         } catch (\Exception $e) {
             Log::error("Webhook Fatal: " . $e->getMessage());
             return response()->json(['status' => false]);
@@ -90,14 +92,14 @@ class WebhookController extends Controller
     {
         $sender = $request->sender;
         Chat::where('sender', $sender)->where('is_from_me', false)->update(['status' => 'read']);
-        
+
         dispatch(function () use ($sender) {
             try {
                 Http::withHeaders(['Authorization' => env('FONNTE_TOKEN')])
                     ->withoutVerifying()
-                    ->timeout(5)
                     ->post('https://api.fonnte.com/read', ['target' => $sender]);
-            } catch (\Exception $e) {}
+            } catch (\Exception $e) {
+            }
         })->afterResponse();
 
         return response()->json(['status' => true]);
@@ -118,6 +120,8 @@ class WebhookController extends Controller
         if ($chat) {
             $chat->update(['status' => $status]);
             broadcast(new NewChatEvent($chat));
+        } else {
+            Cache::put('fonnte_status_' . $idFonnte, $status, 60);
         }
 
         return response()->json(['status' => true]);
@@ -130,7 +134,7 @@ class WebhookController extends Controller
     {
         $apiKey = env('GEMINI_API_KEY');
         $knowledge = AiKnowledge::all()->pluck('content')->implode("\n");
-        $prompt = "Kamu Rifai admin Hayy Tour. Jawab santai. Data:\n$knowledge\n\nPertanyaan: $userQuestion";
+        $prompt = "Kamu Rifai admin Hayy Tour. Jawab santai. PENTING: JANGAN pernah menggunakan karakter bintang (*) untuk teks tebal atau daftar. Gunakan tanda strip (-) untuk membuat list/daftar. Data:\n$knowledge\n\nPertanyaan: $userQuestion";
 
         $response = Http::withHeaders(['Content-Type' => 'application/json'])
             ->withoutVerifying()
@@ -138,7 +142,14 @@ class WebhookController extends Controller
                 'contents' => [['parts' => [['text' => $prompt]]]]
             ]);
 
-        return $response->json()['candidates'][0]['content']['parts'][0]['text'] ?? "Maaf bro, Rifai lagi sibuk.";
+        $aiReply = $response->json()['candidates'][0]['content']['parts'][0]['text'] ?? "Maaf bro, Rifai lagi sibuk.";
+
+        // Bersihkan Bintang (Markdown)
+        $aiReply = str_replace('**', '', $aiReply);
+        $aiReply = str_replace('* ', '- ', $aiReply);
+        $aiReply = str_replace('*', '', $aiReply);
+
+        return trim($aiReply);
     }
 
     /**
@@ -153,11 +164,11 @@ class WebhookController extends Controller
     /**
      * 6. SERAP DATA DARI WEBSITE (CRAWLING)
      */
-    public function crawlWebsite(Request $request) 
+    public function crawlWebsite(Request $request)
     {
         try {
-            $res = Http::withoutVerifying()->timeout(30)->get($request->url);
-            
+            $res = Http::withoutVerifying()->get($request->url);
+
             if ($res->failed()) {
                 return response()->json(['error' => 'Gagal akses website'], 500);
             }
@@ -168,9 +179,9 @@ class WebhookController extends Controller
 
             $cleanText = strip_tags($html);
             $cleanText = preg_replace('/\s+/', ' ', $cleanText);
-            
+
             AiKnowledge::updateOrCreate(
-                ['source_url' => $request->url], 
+                ['source_url' => $request->url],
                 ['content' => trim($cleanText)]
             );
 
@@ -183,7 +194,7 @@ class WebhookController extends Controller
     /**
      * 7. HAPUS KNOWLEDGE AI
      */
-    public function deleteKnowledge($id) 
+    public function deleteKnowledge($id)
     {
         try {
             AiKnowledge::findOrFail($id)->delete();
@@ -202,8 +213,8 @@ class WebhookController extends Controller
         try {
             $knowledge = AiKnowledge::findOrFail($id);
 
-            $res = Http::withoutVerifying()->timeout(30)->get($knowledge->source_url);
-            
+            $res = Http::withoutVerifying()->get($knowledge->source_url);
+
             if ($res->failed()) {
                 return response()->json(['status' => false, 'message' => 'Gagal akses website'], 500);
             }
@@ -227,27 +238,39 @@ class WebhookController extends Controller
      */
     public function sendMessage(Request $request)
     {
-        $response = Http::withHeaders(['Authorization' => env('FONNTE_TOKEN')])
-            ->withoutVerifying()
-            ->post('https://api.fonnte.com/send', [
-                'target'  => $request->receiver,
-                'message' => $request->message
-            ]);
+        try {
+            $response = Http::withHeaders(['Authorization' => env('FONNTE_TOKEN')])
+                ->withoutVerifying()
+                ->post('https://api.fonnte.com/send', [
+                    'target'  => $request->receiver,
+                    'message' => $request->message
+                ]);
 
-        $resData = $response->json();
-        $fonnteId = is_array($resData['id']) ? $resData['id'][0] : ($resData['id'] ?? null);
+            if ($response->successful()) {
+                $resData = $response->json();
+                $fonnteId = is_array($resData['id']) ? $resData['id'][0] : ($resData['id'] ?? null);
 
-        $chat = Chat::create([
-            'sender'     => $request->receiver,
-            'receiver'   => 'Me',
-            'message'    => $request->message,
-            'is_from_me' => true,
-            'id_fonnte'  => $fonnteId,
-            'status'     => 'sent'
-        ]);
-        
-        broadcast(new NewChatEvent($chat));
-        return response()->json($chat);
+                $earlyStatus = Cache::pull('fonnte_status_' . $fonnteId);
+                $finalStatus = $earlyStatus ? $earlyStatus : 'sent';
+
+                $chat = Chat::create([
+                    'sender'     => $request->receiver,
+                    'receiver'   => 'Me',
+                    'message'    => $request->message,
+                    'is_from_me' => true,
+                    'id_fonnte'  => $fonnteId,
+                    'status'     => $finalStatus
+                ]);
+
+                broadcast(new NewChatEvent($chat));
+                return response()->json($chat);
+            }
+
+            return response()->json(['error' => 'Server Fonnte menolak request'], 500);
+        } catch (\Exception $e) {
+            Log::error("Gagal kirim pesan manual: " . $e->getMessage());
+            return response()->json(['error' => 'Koneksi ke Fonnte bermasalah'], 500);
+        }
     }
 
     /**
@@ -261,8 +284,8 @@ class WebhookController extends Controller
 
             foreach ($knowledges as $knowledge) {
                 try {
-                    $res = Http::withoutVerifying()->timeout(30)->get($knowledge->source_url);
-                    
+                    $res = Http::withoutVerifying()->get($knowledge->source_url);
+
                     if ($res->successful()) {
                         $html = $res->body();
                         $html = preg_replace('#<script(.*?)>(.*?)</script>#is', '', $html);
@@ -273,7 +296,6 @@ class WebhookController extends Controller
                         $berhasil++;
                     }
                 } catch (\Exception $e) {
-                    // Kalau 1 gagal, lanjut ke URL berikutnya (jangan berhenti)
                     Log::error("Gagal resync " . $knowledge->source_url . ": " . $e->getMessage());
                 }
             }
